@@ -100,8 +100,9 @@ public class RoomMatcher {
             for (int x = 0; x < res[0].length; x++) {
                 int data = res[z][x];
                 if (data == -1) continue;
-                checked++;
                 BlockState b = dungeonRoom.getRelativeBlockAt(x, 0, z);
+                if (b != null && isSkull(b)) continue;
+                checked++;
                 BlockState expected = info.getPaletteState(data);
                 if (b == null) nulls++;
                 if (b == null || LegacyBlock.legacyId(b) != LegacyBlock.legacyId(expected)) {
@@ -112,6 +113,11 @@ public class RoomMatcher {
             }
         }
         System.out.println("[DungeonsGuide]   compared " + info.getName() + " rot " + rotation + ": checked=" + checked + " wrong=" + wrongs + " unloadedOrNull=" + nulls);
+    }
+
+    private static boolean isSkull(BlockState state) {
+        String name = String.valueOf(state.getBlock());
+        return name.contains("_head") || name.contains("_skull");
     }
 
     private int tryMatching(DungeonRoomInfo dungeonRoomInfo, int rotation) {
@@ -127,6 +133,8 @@ public class RoomMatcher {
                 int data = res[z][x];
                 if (data == -1) continue;
                 BlockState b = dungeonRoom.getRelativeBlockAt(x,0,z);
+                // skulls/heads did not survive the room data conversion (they are air there), so they can never be compared
+                if (b != null && isSkull(b)) continue;
 
                 // D110: 1.8.9 compared block ids without meta, the same as comparing legacy groups
                 if (b == null || LegacyBlock.legacyId(b) != LegacyBlock.legacyId(dungeonRoomInfo.getPaletteState(data))) {

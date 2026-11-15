@@ -134,7 +134,7 @@ public class RoomProcessorBoxSolver extends GeneralRoomProcessor {
 
             calcDone = false;
             if (puzzleSolvingThread != null)
-                puzzleSolvingThread.stop();
+                puzzleSolvingThread.cancel();
             puzzleSolvingThread = new BoxPuzzleSolvingThread(currBoard, 0, 6, new Runnable() {
                 @Override
                 public void run() {

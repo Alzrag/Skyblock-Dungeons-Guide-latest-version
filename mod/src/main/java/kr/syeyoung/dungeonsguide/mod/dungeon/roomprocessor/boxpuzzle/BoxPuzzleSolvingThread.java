@@ -46,12 +46,19 @@ public class BoxPuzzleSolvingThread extends Thread {
 
     private boolean solved = false;
 
+    // Thread.stop() no longer exists on modern java (throws UnsupportedOperationException), so cancel cooperatively
+    private volatile boolean cancelled = false;
+    public void cancel() {
+        cancelled = true;
+    }
+
     @Override
     public void run() {
         solved = false;
-        solution = solve(data,playerX,playerY, 20);
+        solution = solve(data,playerX,playerY, 20, this);
         solved = true;
-        callback.run();
+        // a cancelled thread was replaced by a newer one, its result and callback must not touch the new state
+        if (!cancelled) callback.run();
     }
 
 
@@ -66,7 +73,7 @@ public class BoxPuzzleSolvingThread extends Thread {
 
 
     private static final List<Point> directions = Arrays.asList(new Point(-1,0), new Point(1,0), new Point(0,1), new Point(0,-1));
-    private static Route solve(byte[][] boardStart, int playerX, int playerY, int maxRecursion) { // result:: playerY == 0
+    private static Route solve(byte[][] boardStart, int playerX, int playerY, int maxRecursion, BoxPuzzleSolvingThread owner) { // result:: playerY == 0
         Queue<Route> routes = new LinkedList<Route>();
         Set<String> globalStatesBeen = new HashSet<String>();
 
@@ -77,6 +84,7 @@ public class BoxPuzzleSolvingThread extends Thread {
         while (!routes.isEmpty()) {
             Route route = routes.poll();
 
+            if (owner != null && owner.cancelled) return null;
             if (routes.size() > 3000000) return null;
 
             String stateId = stateString(route.currentState);

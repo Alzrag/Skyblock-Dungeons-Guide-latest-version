@@ -272,7 +272,21 @@ public class DungeonRoom  {
         });
     }
 
+    // the room is scanned from a snapshot of the world. chunks keep arriving for a while after entering, so a failed
+    // match is retried with a fresh snapshot (throttled) for a short time before settling on an unknown room
+    private long firstMatchAttempt = 0;
+    private long lastMatchAttempt = 0;
+    private static final long MATCH_RETRY_INTERVAL_MS = 500;
+    private static final long MATCH_RETRY_WINDOW_MS = 20000;
+
     private void matchRoomAndSetupRoomProcessor() {
+        long now = System.currentTimeMillis();
+        if (firstMatchAttempt != 0 && now - lastMatchAttempt < MATCH_RETRY_INTERVAL_MS) {
+            throw new IllegalStateException("LevelChunk not loaded: retry throttle");
+        }
+        if (firstMatchAttempt == 0) firstMatchAttempt = now;
+        lastMatchAttempt = now;
+
         getCachedWorld();
         buildRoom();
         buildDoors(doorsAndStates);
@@ -313,6 +327,12 @@ public class DungeonRoom  {
             roomMatcher = new RoomMatcher(this);
         DungeonRoomInfo dungeonRoomInfo = roomMatcher.match();
         if (dungeonRoomInfo == null) {
+            if (color != 18 && System.currentTimeMillis() - firstMatchAttempt < MATCH_RETRY_WINDOW_MS) {
+                // probably not fully loaded yet: drop the snapshot and the matcher and try again shortly
+                this.cachedWorld = null;
+                this.roomMatcher = null;
+                throw new IllegalStateException("LevelChunk not loaded: room did not match yet, retrying");
+            }
             dungeonRoomInfo = roomMatcher.createNew();
             if (color == 18) dungeonRoomInfo.setProcessorId("bossroom");
         } else {

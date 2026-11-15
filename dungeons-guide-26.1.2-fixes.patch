@@ -1,0 +1,167 @@
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/SkyblockStatus.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/SkyblockStatus.java
+index 4170fb4..88663bc 100755
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/SkyblockStatus.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/SkyblockStatus.java
+@@ -172 +172 @@ public class SkyblockStatus {
+-            if (sc.getJustTeam().startsWith(" §7⏣")) {
++            if (isLocationLine(sc.getJustTeam())) {
+@@ -179,4 +179,9 @@ public class SkyblockStatus {
+-        if (getLocationName() != null)
+-            isOnDungeon = getLocationName().startsWith("The Catacombs") | foundDungeon;
+-        else
+-            isOnDungeon=false;
++        // the Cleared: line only exists inside a run, so it counts even when the location line wasn't recognized
++        isOnDungeon = foundDungeon || (getLocationName() != null && getLocationName().startsWith("The Catacombs"));
++    }
++
++    // the location line is " §7" + an icon + " " + the name. the icon used to be '⏣', Hypixel now sends a private use font glyph (U+E067 on 26.1)
++    private static boolean isLocationLine(String line) {
++        if (line == null || line.length() < 4 || !line.startsWith(" §7")) return false;
++        char icon = line.charAt(3);
++        return icon == '\u23E3' || (icon >= '\uE000' && icon <= '\uF8FF');
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/commands/CommandDgDebug.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/commands/CommandDgDebug.java
+index 607a8c4..a7ec8e1 100644
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/commands/CommandDgDebug.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/commands/CommandDgDebug.java
+@@ -1441 +1441 @@ public class CommandDgDebug {
+-            DungeonRoomInfoRegistry.saveAll(new File(out, "roomdata"));
++            DungeonRoomInfoRegistry.saveAll(new File(out, "roomdata"), true);
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/dataprovider/catacombs/CatacombsDataProvider.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/dataprovider/catacombs/CatacombsDataProvider.java
+index ef46821..c917c4c 100644
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/dataprovider/catacombs/CatacombsDataProvider.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/dataprovider/catacombs/CatacombsDataProvider.java
+@@ -65,2 +65,2 @@ public abstract class CatacombsDataProvider implements DungeonSpecificDataProvid
+-        // TODO: D5 entity name stopgap (D116)
+-        return mc.level.getEntitiesOfClass(ArmorStand.class, loaded, input -> TextUtils.getFormattedText(input.getName()).equals("§bMort"));
++        // compare the plain name: getFormattedText appends a §r, so the old equals("§bMort") could never match
++        return mc.level.getEntitiesOfClass(ArmorStand.class, loaded, input -> TextUtils.stripColor(input.getName().getString()).trim().equals("Mort"));
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/DungeonRoomInfoRegistry.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/DungeonRoomInfoRegistry.java
+index 60735e8..1c95e5b 100755
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/DungeonRoomInfoRegistry.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/DungeonRoomInfoRegistry.java
+@@ -100,0 +101,5 @@ public class DungeonRoomInfoRegistry {
++        saveAll(dir, false);
++    }
++
++    // force: write every room, not just user made ones (used by dgdebug convertroomdata, which exports the bundled rooms)
++    public static void saveAll(File dir, boolean force) {
+@@ -103 +108 @@ public class DungeonRoomInfoRegistry {
+-        boolean isDev = FabricLoader.getInstance().isDevelopmentEnvironment() || DEV_USERS.contains(Minecraft.getInstance().player.getUUID().toString().replace("-",""));
++        boolean isDev = force || FabricLoader.getInstance().isDevelopmentEnvironment() || DEV_USERS.contains(Minecraft.getInstance().player.getUUID().toString().replace("-",""));
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/RoomMatcher.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/RoomMatcher.java
+index 8d3f86c..5068a59 100755
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/RoomMatcher.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/dungeon/roomfinder/RoomMatcher.java
+@@ -50,0 +51,2 @@ public class RoomMatcher {
++        int diagCandidates = 0, diagColorOk = 0, diagRot = -1;
++        DungeonRoomInfo diagInfo = null;
+@@ -58,0 +61,5 @@ public class RoomMatcher {
++                diagCandidates++;
++                if (roomInfo.getColor() == dungeonRoom.getColor()) {
++                    diagColorOk++;
++                    if (diagInfo == null) { diagInfo = roomInfo; diagRot = rotation; }
++                }
+@@ -73,0 +81,9 @@ public class RoomMatcher {
++        // diagnostics: a room that did not match exactly (or at all) is why secrets are not found, say why
++        System.out.println("[DungeonsGuide] room match: shape=" + dungeonRoom.getRoomBounds().getShape() + " mapColor=" + dungeonRoom.getColor()
++                + " candidates(any rotation)=" + diagCandidates + " sameColor=" + diagColorOk + " bestCost=" + lowestCost
++                + " best=" + (bestMatch == null ? "NONE" : bestMatch.getName() + " rot " + lowestRot) + " registeredRooms=" + DungeonRoomInfoRegistry.getRegistered().size());
++        try {
++            describeMismatch(bestMatch != null ? bestMatch : diagInfo, bestMatch != null ? lowestRot : diagRot);
++        } catch (Throwable t) {
++            System.out.println("[DungeonsGuide] room match diagnostics failed: " + t);
++        }
+@@ -76,0 +93,24 @@ public class RoomMatcher {
++    private void describeMismatch(DungeonRoomInfo info, int rotation) {
++        if (info == null || rotation < 0) return;
++        int[][] res = info.getBlocks();
++        for (int i = 0; i < rotation; i++)
++            res = ArrayUtils.rotateCounterClockwise(res);
++        int shown = 0, checked = 0, wrongs = 0, nulls = 0;
++        for (int z = 0; z < res.length; z++) {
++            for (int x = 0; x < res[0].length; x++) {
++                int data = res[z][x];
++                if (data == -1) continue;
++                checked++;
++                BlockState b = dungeonRoom.getRelativeBlockAt(x, 0, z);
++                BlockState expected = info.getPaletteState(data);
++                if (b == null) nulls++;
++                if (b == null || LegacyBlock.legacyId(b) != LegacyBlock.legacyId(expected)) {
++                    wrongs++;
++                    if (shown++ < 6)
++                        System.out.println("[DungeonsGuide]   mismatch (" + x + "," + z + ") live=" + b + " (legacy " + (b == null ? "-" : LegacyBlock.legacyId(b)) + ") expected=" + expected + " (legacy " + LegacyBlock.legacyId(expected) + ")");
++                }
++            }
++        }
++        System.out.println("[DungeonsGuide]   compared " + info.getName() + " rot " + rotation + ": checked=" + checked + " wrong=" + wrongs + " unloadedOrNull=" + nulls);
++    }
++
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/events/listener/DungeonListener.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/events/listener/DungeonListener.java
+index 8373e66..89ca4dd 100755
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/events/listener/DungeonListener.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/events/listener/DungeonListener.java
+@@ -200,0 +201,5 @@ public class DungeonListener {
++                    } else if (System.currentTimeMillis() - lastContextFailLog > 10000) {
++                        // these are expected while the dungeon is still loading, but if they never stop nothing works, so say so (rate limited)
++                        lastContextFailLog = System.currentTimeMillis();
++                        System.out.println("[DungeonsGuide] cannot create dungeon context for \"" + SkyblockStatus.getLocationName() + "\": "
++                                + ("?".equals(e.getMessage()) ? "Mort / entrance door not found yet" : e.getMessage()));
+@@ -232,0 +238 @@ public class DungeonListener {
++    private long lastContextFailLog = 0;
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/features/impl/dungeon/FeatureDungeonSBTime.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/features/impl/dungeon/FeatureDungeonSBTime.java
+index 2f401fa..50222b4 100644
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/features/impl/dungeon/FeatureDungeonSBTime.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/features/impl/dungeon/FeatureDungeonSBTime.java
+@@ -60,5 +60,6 @@ public class FeatureDungeonSBTime extends TextHUDFeature {
+-        int hour = time.indexOf('h') == -1 ? 0 : Integer.parseInt(time.substring(0, time.indexOf('h')));
+-        if (time.contains("h")) time = time.substring(time.indexOf('h') + 1);
+-        int minute = time.indexOf('m') == -1 ? 0 : Integer.parseInt(time.substring(0, time.indexOf('m')));
+-        if (time.contains("m")) time = time.substring(time.indexOf('m') + 1);
+-        int second = time.indexOf('s') == -1 ? 0 : Integer.parseInt(time.substring(0, time.indexOf('s')));
++        try {
++            int hour = time.indexOf('h') == -1 ? 0 : Integer.parseInt(time.substring(0, time.indexOf('h')));
++            if (time.contains("h")) time = time.substring(time.indexOf('h') + 1);
++            int minute = time.indexOf('m') == -1 ? 0 : Integer.parseInt(time.substring(0, time.indexOf('m')));
++            if (time.contains("m")) time = time.substring(time.indexOf('m') + 1);
++            int second = time.indexOf('s') == -1 ? 0 : Integer.parseInt(time.substring(0, time.indexOf('s')));
+@@ -66,2 +67,6 @@ public class FeatureDungeonSBTime extends TextHUDFeature {
+-        int time2 = hour * 60 * 60 + minute * 60 + second;
+-        return time2 * 1000;
++            int time2 = hour * 60 * 60 + minute * 60 + second;
++            return time2 * 1000;
++        } catch (NumberFormatException e) {
++            // an unparseable scoreboard line must not take the whole client down from a tick handler
++            return 0;
++        }
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/pathfinding/precalculation/PathfindPrecalculation.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/pathfinding/precalculation/PathfindPrecalculation.java
+index cd3dc1f..8d9d4f2 100644
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/pathfinding/precalculation/PathfindPrecalculation.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/pathfinding/precalculation/PathfindPrecalculation.java
+@@ -11,0 +12 @@ import java.lang.ref.SoftReference;
++import java.lang.reflect.Field;
+@@ -166,6 +167,11 @@ public class PathfindPrecalculation {
+-            Method cleanerMethod = toBeDestroyed.getClass().getMethod("cleaner");
+-            cleanerMethod.setAccessible(true);
+-            Object cleaner = cleanerMethod.invoke(toBeDestroyed);
+-            Method cleanMethod = cleaner.getClass().getMethod("clean");
+-            cleanMethod.setAccessible(true);
+-            cleanMethod.invoke(cleaner);
++            // the old reflective DirectByteBuffer.cleaner() access is blocked on modern java (java.base does not open
++            // java.nio), Unsafe.invokeCleaner is the supported way to free a direct buffer. if even that is unavailable
++            // the buffer is just left to the GC, which is harmless
++            try {
++                Field f = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe");
++                f.setAccessible(true);
++                Object unsafe = f.get(null);
++                unsafe.getClass().getMethod("invokeCleaner", ByteBuffer.class).invoke(unsafe, toBeDestroyed);
++            } catch (ReflectiveOperationException | RuntimeException e) {
++                // leave it to the GC
++            }
+diff --git a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/utils/TextUtils.java b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/utils/TextUtils.java
+index 014d022..f767823 100755
+--- a/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/utils/TextUtils.java
++++ b/mod/src/main/java/kr/syeyoung/dungeonsguide/mod/utils/TextUtils.java
+@@ -39 +39,2 @@ public class TextUtils {
+-    private static final Pattern STRIP_COLOR_PATTERN = Pattern.compile("(?i)§[0-9A-FK-OR]");
++    // any § + char: Hypixel pads scoreboard entries with codes that are not formatting codes (like §q), minecraft ignores them when drawing so they must not leave a letter behind
++    private static final Pattern STRIP_COLOR_PATTERN = Pattern.compile("(?i)§.");
